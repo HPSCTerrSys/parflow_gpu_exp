@@ -36,8 +36,12 @@ extern amps_GpuBuffer amps_gpu_sendbuf;
 
 /* This CUDA stuff could be combined with AMPS_MPI_NOT_USE_PERSISTENT case */
 #ifdef PARFLOW_HAVE_CUDA
-
 void _amps_wait_exchange(amps_Handle handle)
+{
+  (void)handle;
+}
+
+void _amps_wait_exchange_internal(amps_Package package)
 {
   COUNT_WAIT += 2;
   if(COUNT_SEND != COUNT_WAIT){ 
@@ -51,17 +55,17 @@ void _amps_wait_exchange(amps_Handle handle)
   int size;
   MPI_Status *status;
 
-  if (handle->package->num_recv + handle->package->num_send)
+  if (package->num_recv + package->num_send)
   {
-    status = (MPI_Status*)calloc(2 * (handle->package->num_recv +
-                                  handle->package->num_send), sizeof(MPI_Status));
+    status = (MPI_Status*)calloc(2 * (package->num_recv +
+                                  package->num_send), sizeof(MPI_Status));
 
-    MPI_Waitall(2 * (handle->package->num_recv + handle->package->num_send),
-                handle->package->recv_requests, status);
+    MPI_Waitall(2 * (package->num_recv + package->num_send),
+                package->recv_requests, status);
     int bytes_corrupted = 0;
-    for (i = 0; i < handle->package->num_recv; i++)
+    for (i = 0; i < package->num_recv; i++)
     {
-      int size_inv = amps_sizeof_invoice(amps_CommWorld, handle->package->recv_invoices[i]);
+      int size_inv = amps_sizeof_invoice(amps_CommWorld, package->recv_invoices[i]);
       char *cpubuf = amps_gpu_recvbuf.buf_host[i];
       char *gpubuf = (char*)malloc(size_inv * sizeof(char));
       CUDA_ERRCHK(cudaMemcpy(gpubuf,
@@ -78,7 +82,7 @@ void _amps_wait_exchange(amps_Handle handle)
       }
 
       errchk = amps_gpupacking(AMPS_UNPACK, 
-                 handle->package->recv_invoices[i], 
+                 package->recv_invoices[i], 
                    i, &combuf, &size);
       if(errchk){
         printf("GPU unpacking failed at line: %d\n", errchk);
@@ -90,24 +94,24 @@ void _amps_wait_exchange(amps_Handle handle)
       }
       free(gpubuf);
     }
-    for (i = 0; i < handle->package->num_recv; i++)
+    for (i = 0; i < package->num_recv; i++)
     {
       amps_gpu_sync_streams(i);
-      AMPS_CLEAR_INVOICE(handle->package->recv_invoices[i]);
+      AMPS_CLEAR_INVOICE(package->recv_invoices[i]);
     }
     free(status);
     (void)errchk;
   }
 
-  for (i = 0; i < 2 * handle->package->num_recv; i++)
+  for (i = 0; i < 2 * package->num_recv; i++)
   {
-    if(handle->package->recv_requests[i] != MPI_REQUEST_NULL)
-      MPI_Request_free(&(handle->package->recv_requests[i]));
+    if(package->recv_requests[i] != MPI_REQUEST_NULL)
+      MPI_Request_free(&(package->recv_requests[i]));
   }
-  for (i = 0; i < 2 * handle->package->num_send; i++)
+  for (i = 0; i < 2 * package->num_send; i++)
   {
-    if(handle->package->send_requests[i] != MPI_REQUEST_NULL)
-      MPI_Request_free(&(handle->package->send_requests[i]));
+    if(package->send_requests[i] != MPI_REQUEST_NULL)
+      MPI_Request_free(&(package->send_requests[i]));
   }
 }
 
@@ -240,6 +244,7 @@ amps_Handle amps_IExchangePackage(amps_Package package)
   // free(status);
 
   COUNT_SEND += 2;
+  _amps_wait_exchange_internal(package);
 
   return(amps_NewHandle(amps_CommWorld, 0, NULL, package));
 }
