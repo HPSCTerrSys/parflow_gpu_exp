@@ -86,16 +86,34 @@ int amps_xsend(
  * @param invoice Data to communicate [IN]
  * @return Error code
  */
+// int amps_Send(amps_Comm comm, int dest, amps_Invoice invoice)
+// {
+//   amps_create_mpi_type(comm, invoice);
+
+//   MPI_Type_commit(&invoice->mpi_type);
+
+//   MPI_Send(MPI_BOTTOM, 1, invoice->mpi_type, dest, 0, MPI_COMM_WORLD);
+
+//   MPI_Type_free(&invoice->mpi_type);
+
+//   return 0;
+// }
 int amps_Send(amps_Comm comm, int dest, amps_Invoice invoice)
 {
+  char *buf;
+  int pos = 0;
+  int size;
+
   amps_create_mpi_type(comm, invoice);
-
   MPI_Type_commit(&invoice->mpi_type);
+  MPI_Type_size(invoice->mpi_type, &size);
 
-  MPI_Send(MPI_BOTTOM, 1, invoice->mpi_type, dest, 0, MPI_COMM_WORLD);
+  buf = (char*)malloc((size_t)(size));
+  MPI_Pack(MPI_BOTTOM, 1, invoice->mpi_type, buf, size, &pos, MPI_COMM_WORLD);
+  MPI_Send(buf, size, MPI_BYTE, dest, 0, MPI_COMM_WORLD);
 
   MPI_Type_free(&invoice->mpi_type);
+  free(buf);
 
   return 0;
 }
-
