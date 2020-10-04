@@ -46,9 +46,9 @@ amps_Package amps_NewPackage(amps_Comm     comm,
   if (num_recv + num_send)
   {
     package->recv_requests = 
-      (MPI_Request*)calloc((num_recv + num_send), sizeof(MPI_Request));
+      (MPI_Request*)calloc(2 * (num_recv + num_send), sizeof(MPI_Request));
 
-    package->send_requests = package->recv_requests + num_recv;
+    package->send_requests = package->recv_requests + 2 * num_recv;
   }
 
   package->num_send = num_send;

@@ -27,7 +27,7 @@ extern "C"{
 #include "amps.h"
 
 // #define DISABLE_GPU_PACKING
-// #define ENFORCE_HOST_STAGING
+#define ENFORCE_HOST_STAGING
 
 #ifdef DISABLE_GPU_PACKING
 //Dummy definitions if no GPU packing
@@ -273,6 +273,93 @@ static int _amps_gpupack_check_inv_vector(int dim, int *len, int type)
   }
 }
 
+/*--------------------------------------------------------------------------
+ * Define amps GPU kernels
+ *--------------------------------------------------------------------------*/
+ extern "C++"{
+
+ template <typename T>
+ __global__ static void 
+ __launch_bounds__(BLOCKSIZE_MAX)
+ PackingKernel(T * __restrict__ ptr_buf, const T * __restrict__ ptr_data, 
+     const int len_x, const int len_y, const int len_z, const int stride_x, const int stride_y, const int stride_z) 
+ {
+   const int k = ((blockIdx.z*blockDim.z)+threadIdx.z);   
+   if(k < len_z)
+   {
+     const int j = ((blockIdx.y*blockDim.y)+threadIdx.y);   
+     if(j < len_y)
+     {
+       const int i = ((blockIdx.x*blockDim.x)+threadIdx.x);   
+       if(i < len_x)
+       {
+         *(ptr_buf + k * len_y * len_x + j * len_x + i) = 
+           *(ptr_data + k * (stride_z + (len_y - 1) * stride_y + len_y * (len_x - 1) * stride_x) + 
+             j * (stride_y + (len_x - 1) * stride_x) + i * stride_x);
+       }
+     }
+   }
+ }
+ 
+ template <typename T>
+ __global__ static void 
+ __launch_bounds__(BLOCKSIZE_MAX)
+ UnpackingKernel(const T * __restrict__ ptr_buf, T * __restrict__  ptr_data, 
+     const int len_x, const int len_y, const int len_z, const int stride_x, const int stride_y, const int stride_z) 
+ {
+   const int k = ((blockIdx.z*blockDim.z)+threadIdx.z);   
+   if(k < len_z)
+   {
+     const int j = ((blockIdx.y*blockDim.y)+threadIdx.y);   
+     if(j < len_y)
+     {
+       const int i = ((blockIdx.x*blockDim.x)+threadIdx.x);   
+       if(i < len_x)
+       {
+         *(ptr_data + k * (stride_z + (len_y - 1) * stride_y + len_y * (len_x - 1) * stride_x) + 
+           j * (stride_y + (len_x - 1) * stride_x) + i * stride_x) = 
+             *(ptr_buf + k * len_y * len_x + j * len_x + i);
+       }
+     }
+   }
+ }
+ template <typename T>
+__global__ static void 
+__launch_bounds__(BLOCKSIZE_MAX)
+CHECK_AND_UNPACK(const T * __restrict__ ptr_buf, T * __restrict__  ptr_data, 
+    const int len_x, const int len_y, const int len_z, const int stride_x, const int stride_y, const int stride_z) 
+{
+  const int k = ((blockIdx.z*blockDim.z)+threadIdx.z);   
+  if(k < len_z)
+  {
+    const int j = ((blockIdx.y*blockDim.y)+threadIdx.y);   
+    if(j < len_y)
+    {
+      const int i = ((blockIdx.x*blockDim.x)+threadIdx.x);   
+      if(i < len_x)
+      {
+        //this was already modified by the previous unpack call that used gpu-gpu message
+        T data = *(ptr_data + k * (stride_z + (len_y - 1) * stride_y + len_y * (len_x - 1) * stride_x) + 
+        j * (stride_y + (len_x - 1) * stride_x) + i * stride_x);
+
+        //this is the correct result from the cpu-cpu message
+        T buf = *(ptr_buf + k * len_y * len_x + j * len_x + i);
+
+        if(data != buf){
+          printf("correct(cpu-cpu): %.20f, incorrect(gpu-gpu): %.20f\n",buf,data);
+        }
+
+        //data = buf is set here (ie, the incorrect gpu-gpu messages are disregarded)
+        *(ptr_data + k * (stride_z + (len_y - 1) * stride_y + len_y * (len_x - 1) * stride_x) + 
+          j * (stride_y + (len_x - 1) * stride_x) + i * stride_x) = 
+            *(ptr_buf + k * len_y * len_x + j * len_x + i);
+      }
+    }
+  }
+}
+}
+
+
 /**
 *
 * The \Ref{amps_gpupacking} operates in 3 different modes:
@@ -415,13 +502,17 @@ int amps_gpupacking(int action, amps_Invoice inv, int inv_num, char **buffer_out
     }
     else if(action == AMPS_UNPACK){
       cudaStream_t new_stream = amps_gpu_get_stream(inv_num);
+      //first unpack the gpu-gpu message
+      UnpackingKernel<<<grid, block, 0, new_stream>>>(
+        (double*)buffer, (double*)data, len_x, len_y, len_z, stride_x, stride_y, stride_z);
 #ifdef ENFORCE_HOST_STAGING
-      //copy host buffer to device before unpacking
+      //copy host buffer to device to unpack cpu-cpu message
       CUDA_ERRCHK(cudaMemcpyAsync(amps_gpu_recvbuf.buf[inv_num] + pos,
                                     amps_gpu_recvbuf.buf_host[inv_num] + pos,
                                       size, cudaMemcpyHostToDevice, new_stream));
 #endif
-      UnpackingKernel<<<grid, block, 0, new_stream>>>(
+      //check results and unpack cpu-cpu message (overwriting gpu-gpu message)
+      CHECK_AND_UNPACK<<<grid, block, 0, new_stream>>>(
         (double*)buffer, (double*)data, len_x, len_y, len_z, stride_x, stride_y, stride_z);
       inv->flags &= ~AMPS_PACKED;
     }

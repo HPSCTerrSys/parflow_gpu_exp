@@ -28,11 +28,23 @@
 
 #include "amps.h"
 
+static int COUNT_SEND = 10;
+static int COUNT_WAIT = 10;
+
+extern amps_GpuBuffer amps_gpu_recvbuf;
+extern amps_GpuBuffer amps_gpu_sendbuf;
+
 /* This CUDA stuff could be combined with AMPS_MPI_NOT_USE_PERSISTENT case */
 #ifdef PARFLOW_HAVE_CUDA
 
 void _amps_wait_exchange(amps_Handle handle)
 {
+  COUNT_WAIT += 2;
+  if(COUNT_SEND != COUNT_WAIT){ 
+    printf("CALL COUNT PROBLEM: SEND: %d, WAIT: %d\n", COUNT_SEND,COUNT_WAIT);
+    exit(1);
+  }
+
   char *combuf;
   int errchk;
   int i;
@@ -41,17 +53,21 @@ void _amps_wait_exchange(amps_Handle handle)
 
   if (handle->package->num_recv + handle->package->num_send)
   {
-    status = (MPI_Status*)calloc((handle->package->num_recv +
+    status = (MPI_Status*)calloc(2 * (handle->package->num_recv +
                                   handle->package->num_send), sizeof(MPI_Status));
 
-    MPI_Waitall(handle->package->num_recv + handle->package->num_send,
-                handle->package->recv_requests, status);
+    MPI_Waitall(2 * (handle->package->num_recv + handle->package->num_send),
+                handle->package->recv_requests,
+                status);
     for (i = 0; i < handle->package->num_recv; i++)
     {
       errchk = amps_gpupacking(AMPS_UNPACK, 
                  handle->package->recv_invoices[i], 
                    i, &combuf, &size);
-      // if(errchk) printf("GPU unpacking failed at line: %d\n", errchk);
+      if(errchk){
+        printf("GPU unpacking failed at line: %d\n", errchk);
+        exit(1);
+      }
     }
     for (i = 0; i < handle->package->num_recv; i++)
     {
@@ -62,19 +78,13 @@ void _amps_wait_exchange(amps_Handle handle)
     (void)errchk;
   }
 
-  for (i = 0; i < handle->package->num_recv; i++)
+  for (i = 0; i < 2 * handle->package->num_recv; i++)
   {
-    MPI_Datatype type = handle->package->recv_invoices[i]->mpi_type;
-    if (type != MPI_DATATYPE_NULL && type != MPI_BYTE)
-      MPI_Type_free(&(handle->package->recv_invoices[i]->mpi_type));
     if(handle->package->recv_requests[i] != MPI_REQUEST_NULL)
       MPI_Request_free(&(handle->package->recv_requests[i]));
   }
-  for (i = 0; i < handle->package->num_send; i++)
+  for (i = 0; i < 2 * handle->package->num_send; i++)
   {
-    MPI_Datatype type = handle->package->send_invoices[i]->mpi_type;
-    if (type != MPI_DATATYPE_NULL && type != MPI_BYTE)
-      MPI_Type_free(&handle->package->send_invoices[i]->mpi_type);
     if(handle->package->send_requests[i] != MPI_REQUEST_NULL)
       MPI_Request_free(&(handle->package->send_requests[i]));
   }
@@ -82,12 +92,64 @@ void _amps_wait_exchange(amps_Handle handle)
 
 amps_Handle amps_IExchangePackage(amps_Package package)
 {
-  char **combuf;
+  char **combuf_cpu;
   int *size;
   int errchk;
   int i;
 
-  combuf = (char**)malloc(package->num_send * sizeof(char*));
+    /*--------------------------------------------------------------------
+   * THIS IS DUMMY COMMUNICATION, SHOULD NOT INFLUENCE RESULTS
+   *--------------------------------------------------------------------*/
+  {
+    int *sbuf = (int*)calloc(package->num_send, sizeof(int));
+    int *rbuf = (int*)calloc(package->num_recv, sizeof(int));
+    int num = package->num_send + package->num_recv;
+    MPI_Request *rreq = (MPI_Request*)calloc((size_t)(num), sizeof(MPI_Request));
+    MPI_Request *sreq = rreq + package->num_recv;
+    MPI_Status *status = (MPI_Status*)calloc((size_t)(num), sizeof(MPI_Status));
+    for (i = 0; i < package->num_send; i++){
+      for (int j = 0; j < package->num_send; j++){
+        if(i != j){
+          if(package->dest[i] == package->dest[j]){
+            printf("DUPLICATE DEST! num_send: %d\n",package->num_send);
+            for (int k = 0; k < package->num_send; k++){
+              printf("package->dest[%d]: %d\n",k,package->dest[k]);
+            }
+            exit(1);
+          }
+        }
+      }
+      sbuf[i] = 145;
+      MPI_Isend(&sbuf[i], 1, MPI_INT, package->dest[i], 9, amps_CommWorld, &sreq[i]);
+    }
+    for (i = 0; i < package->num_recv; i++)
+    {
+      for (int j = 0; j < package->num_recv; j++){
+        if(i != j){
+          if(package->src[i] == package->src[j]){
+            printf("DUPLICATE SRC! num_recv: %d\n",package->num_recv);
+            for (int k = 0; k < package->num_recv; k++){
+              printf("package->src[%d]: %d\n",k,package->src[k]);
+            }
+            exit(1);
+          }
+        }
+      }
+      MPI_Irecv(&rbuf[i], 1, MPI_INT, package->src[i], 9, amps_CommWorld, &rreq[i]);
+    }
+    MPI_Waitall(num, rreq, status);
+    // MPI_Barrier(MPI_COMM_WORLD);
+    for (i = 0; i < package->num_recv; i++)
+    {
+      if(rbuf[i] != 145){
+        printf("ERROR in MPI Communication! \n");
+        exit(1);
+      }
+    }
+    free(sbuf);free(rbuf);free(rreq);free(status);
+  }
+
+  combuf_cpu = (char**)malloc(package->num_send * sizeof(char*));
   size = (int*)malloc(package->num_send * sizeof(int));
 
   /*--------------------------------------------------------------------
@@ -96,21 +158,23 @@ amps_Handle amps_IExchangePackage(amps_Package package)
   for (i = 0; i < package->num_recv; i++)
   {
     errchk = amps_gpupacking(AMPS_GETRBUF, package->recv_invoices[i], 
-                   i, &combuf[0], &size[0]);
+                   i, &combuf_cpu[0], &size[0]);
     if(errchk == 0){    
       package->recv_invoices[i]->mpi_type = MPI_BYTE;
     }
     else{ 
-      // printf("GPU recv packing check failed at line: %d\n", errchk);
-      combuf[0] = NULL;
-      size[0] = 1;
-      amps_create_mpi_type(MPI_COMM_WORLD, package->recv_invoices[i]);
-      MPI_Type_commit(&(package->recv_invoices[i]->mpi_type));
+      printf("GPU recv packing check failed at line: %d\n", errchk);
+      exit(1);
     }
 
-    MPI_Irecv(combuf[0], size[0], package->recv_invoices[i]->mpi_type,
-              package->src[i], 0, MPI_COMM_WORLD,
+    MPI_Irecv(combuf_cpu[0], size[0], package->recv_invoices[i]->mpi_type,
+              package->src[i], COUNT_SEND, MPI_COMM_WORLD,
               &(package->recv_requests[i]));
+
+    char *combuf_gpu = amps_gpu_recvbuf.buf[i];
+    MPI_Irecv(combuf_gpu, size[0], package->recv_invoices[i]->mpi_type,
+              package->src[i], COUNT_SEND + 1, MPI_COMM_WORLD,
+              &(package->recv_requests[package->num_recv + i]));
   }
 
   /*--------------------------------------------------------------------
@@ -119,27 +183,42 @@ amps_Handle amps_IExchangePackage(amps_Package package)
   for (i = 0; i < package->num_send; i++)
   {
     errchk = amps_gpupacking(AMPS_PACK, package->send_invoices[i], 
-                   i, &combuf[i], &size[i]);
+                   i, &combuf_cpu[i], &size[i]);
     if(errchk == 0){    
       package->send_invoices[i]->mpi_type = MPI_BYTE;
     }
     else{
-      // printf("GPU packing failed at line: %d\n", errchk);
-      combuf[i] = NULL;
-      size[i] = 1;
-      amps_create_mpi_type(MPI_COMM_WORLD, package->send_invoices[i]);
-      MPI_Type_commit(&(package->send_invoices[i]->mpi_type));
+      printf("GPU packing failed at line: %d\n", errchk);
+      exit(1);
     }
   }
   for (i = 0; i < package->num_send; i++)
   {
     amps_gpu_sync_streams(i);
-    MPI_Isend(combuf[i], size[i], package->send_invoices[i]->mpi_type,
-              package->dest[i], 0, MPI_COMM_WORLD,
+    
+    char *combuf_gpu = amps_gpu_sendbuf.buf[i];
+    //this copy is actually already done but here just for the clarity
+    CUDA_ERRCHK(cudaMemcpy(combuf_gpu,
+                  combuf_cpu[i], 
+                    size[i], cudaMemcpyHostToDevice));
+
+    MPI_Isend(combuf_cpu[i], size[i], package->send_invoices[i]->mpi_type,
+              package->dest[i], COUNT_SEND, MPI_COMM_WORLD,
               &(package->send_requests[i]));
+
+    MPI_Isend(combuf_gpu, size[i], package->send_invoices[i]->mpi_type,
+              package->dest[i], COUNT_SEND + 1, MPI_COMM_WORLD,
+              &(package->send_requests[package->num_send + i]));
   }
-  free(combuf);
+  free(combuf_cpu);
   free(size);
+
+  // MPI_Status *status = (MPI_Status*)calloc(2 * (package->num_recv + package->num_send), sizeof(MPI_Status));
+  // MPI_Waitall(2 * (package->num_recv + package->num_send), package->recv_requests, status);
+  // MPI_Barrier(MPI_COMM_WORLD);
+  // free(status);
+
+  COUNT_SEND += 2;
 
   return(amps_NewHandle(amps_CommWorld, 0, NULL, package));
 }
