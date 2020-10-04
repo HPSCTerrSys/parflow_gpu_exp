@@ -57,10 +57,26 @@ void _amps_wait_exchange(amps_Handle handle)
                                   handle->package->num_send), sizeof(MPI_Status));
 
     MPI_Waitall(2 * (handle->package->num_recv + handle->package->num_send),
-                handle->package->recv_requests,
-                status);
+                handle->package->recv_requests, status);
+    int bytes_corrupted = 0;
     for (i = 0; i < handle->package->num_recv; i++)
     {
+      int size_inv = amps_sizeof_invoice(amps_CommWorld, handle->package->recv_invoices[i]);
+      char *cpubuf = amps_gpu_recvbuf.buf_host[i];
+      char *gpubuf = (char*)malloc(size_inv * sizeof(char));
+      CUDA_ERRCHK(cudaMemcpy(gpubuf,
+                    amps_gpu_recvbuf.buf[i], 
+                      size_inv, cudaMemcpyDeviceToHost));
+      for(int j = 0; j < size_inv; j++){
+        if(cpubuf[j] != gpubuf[j]){
+          bytes_corrupted++;
+        }
+      }
+      if(bytes_corrupted != 0){
+        printf("%d/%d bytes corrupted! (Rank: %d, COUNT: %d, Invoice: %d)\n", 
+          bytes_corrupted, size_inv, amps_rank, COUNT_WAIT, i);
+      }
+
       errchk = amps_gpupacking(AMPS_UNPACK, 
                  handle->package->recv_invoices[i], 
                    i, &combuf, &size);
@@ -68,6 +84,11 @@ void _amps_wait_exchange(amps_Handle handle)
         printf("GPU unpacking failed at line: %d\n", errchk);
         exit(1);
       }
+      if(size != size_inv){
+        printf("size != size_inv! \n");
+        exit(1);
+      }
+      free(gpubuf);
     }
     for (i = 0; i < handle->package->num_recv; i++)
     {

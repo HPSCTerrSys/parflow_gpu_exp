@@ -345,9 +345,9 @@ CHECK_AND_UNPACK(const T * __restrict__ ptr_buf, T * __restrict__  ptr_data,
         //this is the correct result from the cpu-cpu message
         T buf = *(ptr_buf + k * len_y * len_x + j * len_x + i);
 
-        if(data != buf){
-          printf("correct(cpu-cpu): %.20f, incorrect(gpu-gpu): %.20f\n",buf,data);
-        }
+        // if(data != buf){
+          // printf("correct(cpu-cpu): %.20f, incorrect(gpu-gpu): %.20f\n",buf,data);
+        // }
 
         //data = buf is set here (ie, the incorrect gpu-gpu messages are disregarded)
         *(ptr_data + k * (stride_z + (len_y - 1) * stride_y + len_y * (len_x - 1) * stride_x) + 
