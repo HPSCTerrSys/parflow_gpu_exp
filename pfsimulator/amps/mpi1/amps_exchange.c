@@ -62,9 +62,9 @@ void _amps_wait_exchange_internal(amps_Package package)
 
     MPI_Waitall(2 * (package->num_recv + package->num_send),
                 package->recv_requests, status);
-    int bytes_corrupted = 0;
     for (i = 0; i < package->num_recv; i++)
     {
+      int bytes_corrupted = 0;
       int size_inv = amps_sizeof_invoice(amps_CommWorld, package->recv_invoices[i]);
       char *cpubuf = amps_gpu_recvbuf.buf_host[i];
       char *gpubuf = (char*)malloc(size_inv * sizeof(char));
@@ -77,8 +77,8 @@ void _amps_wait_exchange_internal(amps_Package package)
         }
       }
       if(bytes_corrupted != 0){
-        printf("%d/%d bytes corrupted! (Rank: %d, COUNT: %d, Invoice: %d)\n", 
-          bytes_corrupted, size_inv, amps_rank, COUNT_WAIT, i);
+        printf("%d/%d bytes corrupted! (Rank: %d, COUNT: %d, Invoice: %d/%d)\n", 
+          bytes_corrupted, size_inv, amps_rank, COUNT_WAIT, i, package->num_recv);
       }
 
       errchk = amps_gpupacking(AMPS_UNPACK, 
