@@ -155,6 +155,10 @@ int amps_Init(int *argc, char **argv[])
     MPI_Comm_size(amps_CommWrite, &amps_write_size);
   }
 
+  int amps_node_id = amps_rank;
+  MPI_Bcast(&amps_node_id, 1, MPI_INT, 0, amps_CommNode);
+  printf("Rank: %d, Node rank: %d, Node id: %d\n",amps_rank,amps_node_rank,amps_node_id);
+
 
 #ifdef AMPS_STDOUT_NOBUFF
   setbuf(stdout, NULL);

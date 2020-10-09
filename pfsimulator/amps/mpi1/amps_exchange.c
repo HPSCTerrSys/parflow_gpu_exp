@@ -77,8 +77,9 @@ void _amps_wait_exchange_internal(amps_Package package)
         }
       }
       if(bytes_corrupted != 0){
-        printf("%d/%d bytes corrupted! (Rank: %d, COUNT: %d, Invoice: %d/%d)\n", 
-          bytes_corrupted, size_inv, amps_rank, COUNT_WAIT, i, package->num_recv);
+        printf("%d/%d bytes corrupted! (src[node]->dest[node]: %d[%d]->%d[%d], COUNT: %d, Invoice: %d/%d)\n", 
+          bytes_corrupted, size_inv, package->src[i], package->src[i]/4, amps_rank, amps_rank/4, 
+          COUNT_WAIT, i, package->num_recv - 1);
       }
 
       errchk = amps_gpupacking(AMPS_UNPACK, 
