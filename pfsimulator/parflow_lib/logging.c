@@ -141,6 +141,7 @@ void PrintVersionInfo(FILE *log_file)
   fprintf(log_file, "\tWith F77 flags  : %s\n", FFLAGS);
 #endif
 
+#pragma message("HIPIFY THE LOG!!!")
 #if defined(PARFLOW_HAVE_KOKKOS) && !defined(PARFLOW_HAVE_RMM)
   fprintf(log_file, "\tWith acc backend: KOKKOS\n");
 #elif defined(PARFLOW_HAVE_KOKKOS) && defined(PARFLOW_HAVE_RMM)

@@ -51,6 +51,7 @@
 #include <string.h>
 #include <sys/times.h>
 
+#pragma message("HIPIFY???")
 #ifdef PARFLOW_HAVE_CUDA
 #include <cuda.h>
 #include <cuda_runtime.h>

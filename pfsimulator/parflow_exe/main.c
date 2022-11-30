@@ -139,6 +139,9 @@ int main(int argc, char *argv [])
      *-----------------------------------------------------------------------*/
 #if defined(PARFLOW_HAVE_KOKKOS)
     kokkosInit();
+
+#pragma message("HIPIFY!!!")
+
 #elif defined(PARFLOW_HAVE_CUDA)
 
     /*-----------------------------------------------------------------------

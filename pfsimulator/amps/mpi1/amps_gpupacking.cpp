@@ -140,10 +140,15 @@ void amps_gpu_sync_streams(int id){
  * @param size The size of the allocation in bytes
  */
 void* kokkosDeviceAlloc(size_t size){
+#define PARFLOW_KOKKOS_MEMSPACE "Kokkos::CudaSpace"
+
+#pragma message("HIPIFY!!!")
+  return Kokkos::kokkos_malloc<PARFLOW_KOKKOS_MEMSPACE>(size);
+
 #ifdef PARFLOW_HAVE_CUDA
   return Kokkos::kokkos_malloc<Kokkos::CudaSpace>(size);
 #else
-  return Kokkos::kokkos_malloc(size);
+  return Kokkos::kokkos_malloc<Kokkos::HostSpace>(size);
 #endif
 }
 
@@ -153,8 +158,11 @@ void* kokkosDeviceAlloc(size_t size){
  * @param ptr Freed pointer
  */
 void kokkosDeviceFree(void *ptr){
+#pragma message("HIPIFY!!!")
 #ifdef PARFLOW_HAVE_CUDA
   Kokkos::kokkos_free<Kokkos::CudaSpace>(ptr);
+#elif PARFLOW_HAVE_HIP
+  Kokkos::kokkos_free<Kokkos::Experimental::HIPSpace>(ptr);
 #else
   Kokkos::kokkos_free(ptr);
 #endif
@@ -166,6 +174,7 @@ void kokkosDeviceFree(void *ptr){
  * @param size The size of the allocation in bytes
  */
 void* kokkosHostAlloc(size_t size){
+#pragma message("HIPIFY!!!")
 #ifdef PARFLOW_HAVE_CUDA
   return Kokkos::kokkos_malloc<Kokkos::CudaHostPinnedSpace>(size);
 #else
@@ -179,6 +188,7 @@ void* kokkosHostAlloc(size_t size){
  * @param ptr Freed pointer
  */
 void kokkosHostFree(void *ptr){
+#pragma message("HIPIFY!!!")
 #ifdef PARFLOW_HAVE_CUDA
   Kokkos::kokkos_free<Kokkos::CudaHostPinnedSpace>(ptr);
 #else
@@ -212,6 +222,7 @@ void kokkosUVMFree(void *ptr){
  * @param size Bytes to be copied
  */
 void kokkosMemCpyDeviceToDevice(char *dest, char *src, size_t size){
+#pragma message("HIPIFY!!!")
 #ifdef PARFLOW_HAVE_CUDA
   Kokkos::View<char*, Kokkos::CudaSpace> dest_view(dest, size);
   Kokkos::View<char*, Kokkos::CudaSpace> src_view(src, size);
@@ -231,6 +242,7 @@ void kokkosMemCpyDeviceToDevice(char *dest, char *src, size_t size){
  * @param size Bytes to be copied
  */
 void kokkosMemCpyDeviceToHost(char *dest, char *src, size_t size){
+#pragma message("HIPIFY!!!")
 #ifdef PARFLOW_HAVE_CUDA
   Kokkos::View<char*, Kokkos::CudaHostPinnedSpace> dest_view(dest, size);
   Kokkos::View<char*, Kokkos::CudaSpace> src_view(src, size);
@@ -249,6 +261,7 @@ void kokkosMemCpyDeviceToHost(char *dest, char *src, size_t size){
  * @param size Bytes to be copied
  */
 void kokkosMemCpyHostToDevice(char *dest, char *src, size_t size){
+#pragma message("HIPIFY!!!")
 #ifdef PARFLOW_HAVE_CUDA
   Kokkos::View<char*, Kokkos::CudaSpace> dest_view(dest, size);
   Kokkos::View<char*, Kokkos::CudaHostPinnedSpace> src_view(src, size);
@@ -267,6 +280,7 @@ void kokkosMemCpyHostToDevice(char *dest, char *src, size_t size){
  * @param size Bytes to be copied
  */
 void kokkosMemCpyHostToHost(char *dest, char *src, size_t size){
+#pragma message("HIPIFY!!!")
 #ifdef PARFLOW_HAVE_CUDA
   Kokkos::View<char*, Kokkos::CudaHostPinnedSpace> dest_view(dest, size);
   Kokkos::View<char*, Kokkos::CudaHostPinnedSpace> src_view(src, size);
@@ -593,6 +607,7 @@ int amps_gpupacking(int action, amps_Invoice inv, int inv_num, char **buffer_out
     char *data = (char*)ptr->data;
 
 #ifdef PARFLOW_HAVE_CUDA
+#pragma message("HIPIFY???")
     struct cudaPointerAttributes attributes;
     cudaPointerGetAttributes(&attributes, (void *)data);  
   
@@ -616,6 +631,7 @@ int amps_gpupacking(int action, amps_Invoice inv, int inv_num, char **buffer_out
     }
 
 #ifdef PARFLOW_HAVE_CUDA
+#pragma message("HIPIFY???")
     /* Get buffer location and its properties */
     cudaPointerGetAttributes(&attributes, (void *)buffer);  
 

@@ -143,6 +143,7 @@ int amps_AllReduce(amps_Comm comm, amps_Invoice invoice, MPI_Op operation)
     in_buffer = (char*)malloc((size_t)(element_size * len));
     out_buffer = (char*)malloc((size_t)(element_size * len));
 
+#pragma message("HIPIFY???")
 #ifdef PARFLOW_HAVE_CUDA
     /* Prefetch device data into host memory */
     struct cudaPointerAttributes attributes;
