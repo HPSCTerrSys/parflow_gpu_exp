@@ -140,11 +140,8 @@ void amps_gpu_sync_streams(int id){
  * @param size The size of the allocation in bytes
  */
 void* kokkosDeviceAlloc(size_t size){
-#define PARFLOW_KOKKOS_MEMSPACE "Kokkos::CudaSpace"
 
 #pragma message("HIPIFY!!!")
-  return Kokkos::kokkos_malloc<PARFLOW_KOKKOS_MEMSPACE>(size);
-
 #ifdef PARFLOW_HAVE_CUDA
   return Kokkos::kokkos_malloc<Kokkos::CudaSpace>(size);
 #else
@@ -161,8 +158,6 @@ void kokkosDeviceFree(void *ptr){
 #pragma message("HIPIFY!!!")
 #ifdef PARFLOW_HAVE_CUDA
   Kokkos::kokkos_free<Kokkos::CudaSpace>(ptr);
-#elif PARFLOW_HAVE_HIP
-  Kokkos::kokkos_free<Kokkos::Experimental::HIPSpace>(ptr);
 #else
   Kokkos::kokkos_free(ptr);
 #endif
