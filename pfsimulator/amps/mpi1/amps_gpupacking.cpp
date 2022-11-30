@@ -19,6 +19,20 @@
 
 #include <Kokkos_Core.hpp>
 
+// macros to build the Kokkos memory space names used in Kokkos templates, so we can avoid duplication of the Kokkos calls/constructors
+#define PF_KOKKOS_MEMSPACE_CONCAT(a,b) a::b
+#if PARFLOW_HAVE_CUDA
+    #define PF_KOKKOS_MEMSPACE   PF_KOKKOS_MEMSPACE_CONCAT(Kokkos,CudaSpace) 
+    #define PF_KOKKOS_MEMPINSPACE PF_KOKKOS_MEMSPACE_CONCAT(Kokkos,CudaHostPinnedSpace)
+#elif PARFLOW_HAVE_HIP
+    #define PF_KOKKOS_MEMSPACE   PF_KOKKOS_MEMSPACE_CONCAT(Kokkos,Experimental::HIPSpace) 
+    #define PF_KOKKOS_MEMPINSPACE PF_KOKKOS_MEMSPACE_CONCAT(Kokkos,Experimental::HIPHostPinnedSpace)
+#elif 
+    #define PF_KOKKOS_MEMSPACE   PF_KOKKOS_MEMSPACE_CONCAT(Kokkos,HostSpace)
+    #define PF_KOKKOS_MEMPINSPACE PF_KOKKOS_MEMSPACE_CONCAT(Kokkos,HostSpace)
+#endif
+
+
 extern "C"{
 
 #include <stdlib.h>
@@ -140,16 +154,9 @@ void amps_gpu_sync_streams(int id){
  * @param size The size of the allocation in bytes
  */
 void* kokkosDeviceAlloc(size_t size){
-#define PARFLOW_KOKKOS_MEMSPACE "Kokkos::CudaSpace"
 
-#pragma message("HIPIFY!!!")
-  return Kokkos::kokkos_malloc<PARFLOW_KOKKOS_MEMSPACE>(size);
+  return Kokkos::kokkos_malloc<PF_KOKKOS_MEMSPACE>(size);
 
-#ifdef PARFLOW_HAVE_CUDA
-  return Kokkos::kokkos_malloc<Kokkos::CudaSpace>(size);
-#else
-  return Kokkos::kokkos_malloc<Kokkos::HostSpace>(size);
-#endif
 }
 
 /**
@@ -158,14 +165,7 @@ void* kokkosDeviceAlloc(size_t size){
  * @param ptr Freed pointer
  */
 void kokkosDeviceFree(void *ptr){
-#pragma message("HIPIFY!!!")
-#ifdef PARFLOW_HAVE_CUDA
-  Kokkos::kokkos_free<Kokkos::CudaSpace>(ptr);
-#elif PARFLOW_HAVE_HIP
-  Kokkos::kokkos_free<Kokkos::Experimental::HIPSpace>(ptr);
-#else
-  Kokkos::kokkos_free(ptr);
-#endif
+  Kokkos::kokkos_free<PF_KOKKOS_MEMSPACE>(ptr);
 }
 
 /**
@@ -174,12 +174,7 @@ void kokkosDeviceFree(void *ptr){
  * @param size The size of the allocation in bytes
  */
 void* kokkosHostAlloc(size_t size){
-#pragma message("HIPIFY!!!")
-#ifdef PARFLOW_HAVE_CUDA
-  return Kokkos::kokkos_malloc<Kokkos::CudaHostPinnedSpace>(size);
-#else
-  return Kokkos::kokkos_malloc<Kokkos::HostSpace>(size);
-#endif
+  return Kokkos::kokkos_malloc<PF_KOKKOS_MEMPINSPACE>(size);
 }
 
 /**
@@ -188,12 +183,7 @@ void* kokkosHostAlloc(size_t size){
  * @param ptr Freed pointer
  */
 void kokkosHostFree(void *ptr){
-#pragma message("HIPIFY!!!")
-#ifdef PARFLOW_HAVE_CUDA
-  Kokkos::kokkos_free<Kokkos::CudaHostPinnedSpace>(ptr);
-#else
-  Kokkos::kokkos_free<Kokkos::HostSpace>(ptr);
-#endif
+  Kokkos::kokkos_free<PF_KOKKOS_MEMPINSPACE>(ptr);
 }
 
 /**
@@ -222,14 +212,8 @@ void kokkosUVMFree(void *ptr){
  * @param size Bytes to be copied
  */
 void kokkosMemCpyDeviceToDevice(char *dest, char *src, size_t size){
-#pragma message("HIPIFY!!!")
-#ifdef PARFLOW_HAVE_CUDA
-  Kokkos::View<char*, Kokkos::CudaSpace> dest_view(dest, size);
-  Kokkos::View<char*, Kokkos::CudaSpace> src_view(src, size);
-#else
-  Kokkos::View<char*> dest_view(dest, size);
-  Kokkos::View<char*> src_view(src, size);
-#endif
+  Kokkos::View<char*, PF_KOKKOS_MEMSPACE> dest_view(dest, size);
+  Kokkos::View<char*, PF_KOKKOS_MEMSPACE> src_view(src, size);
   Kokkos::deep_copy(dest_view, src_view);
 }
 
@@ -242,14 +226,8 @@ void kokkosMemCpyDeviceToDevice(char *dest, char *src, size_t size){
  * @param size Bytes to be copied
  */
 void kokkosMemCpyDeviceToHost(char *dest, char *src, size_t size){
-#pragma message("HIPIFY!!!")
-#ifdef PARFLOW_HAVE_CUDA
-  Kokkos::View<char*, Kokkos::CudaHostPinnedSpace> dest_view(dest, size);
-  Kokkos::View<char*, Kokkos::CudaSpace> src_view(src, size);
-#else
-  Kokkos::View<char*, Kokkos::HostSpace> dest_view(dest, size);
-  Kokkos::View<char*> src_view(src, size);
-#endif
+  Kokkos::View<char*, PF_KOKKOS_MEMPINSPACE> dest_view(dest, size);
+  Kokkos::View<char*, PF_KOKKOS_MEMSPACE> src_view(src, size);
   Kokkos::deep_copy(dest_view, src_view);
 }
 
@@ -261,14 +239,8 @@ void kokkosMemCpyDeviceToHost(char *dest, char *src, size_t size){
  * @param size Bytes to be copied
  */
 void kokkosMemCpyHostToDevice(char *dest, char *src, size_t size){
-#pragma message("HIPIFY!!!")
-#ifdef PARFLOW_HAVE_CUDA
-  Kokkos::View<char*, Kokkos::CudaSpace> dest_view(dest, size);
-  Kokkos::View<char*, Kokkos::CudaHostPinnedSpace> src_view(src, size);
-#else
-  Kokkos::View<char*> dest_view(dest, size);
-  Kokkos::View<char*, Kokkos::HostSpace> src_view(src, size);
-#endif
+  Kokkos::View<char*, PF_KOKKOS_MEMSPACE> dest_view(dest, size);
+  Kokkos::View<char*, PF_KOKKOS_MEMPINSPACE> src_view(src, size);
   Kokkos::deep_copy(dest_view, src_view);
 }
 
@@ -280,14 +252,8 @@ void kokkosMemCpyHostToDevice(char *dest, char *src, size_t size){
  * @param size Bytes to be copied
  */
 void kokkosMemCpyHostToHost(char *dest, char *src, size_t size){
-#pragma message("HIPIFY!!!")
-#ifdef PARFLOW_HAVE_CUDA
-  Kokkos::View<char*, Kokkos::CudaHostPinnedSpace> dest_view(dest, size);
-  Kokkos::View<char*, Kokkos::CudaHostPinnedSpace> src_view(src, size);
-#else
-  Kokkos::View<char*, Kokkos::HostSpace> dest_view(dest, size);
-  Kokkos::View<char*, Kokkos::HostSpace> src_view(src, size);
-#endif
+  Kokkos::View<char*, PF_KOKKOS_MEMPINSPACE> dest_view(dest, size);
+  Kokkos::View<char*, PF_KOKKOS_MEMPINSPACE> src_view(src, size);
   Kokkos::deep_copy(dest_view, src_view);
 }
 
