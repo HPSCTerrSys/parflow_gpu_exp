@@ -154,9 +154,7 @@ void amps_gpu_sync_streams(int id){
  * @param size The size of the allocation in bytes
  */
 void* kokkosDeviceAlloc(size_t size){
-
   return Kokkos::kokkos_malloc<PF_KOKKOS_MEMSPACE>(size);
-
 }
 
 /**
