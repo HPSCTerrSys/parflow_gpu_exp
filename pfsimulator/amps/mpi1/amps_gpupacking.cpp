@@ -27,7 +27,7 @@
 #elif PARFLOW_HAVE_HIP
     #define PF_KOKKOS_MEMSPACE   PF_KOKKOS_MEMSPACE_CONCAT(Kokkos,Experimental::HIPSpace) 
     #define PF_KOKKOS_MEMPINSPACE PF_KOKKOS_MEMSPACE_CONCAT(Kokkos,Experimental::HIPHostPinnedSpace)
-#elif 
+#else 
     #define PF_KOKKOS_MEMSPACE   PF_KOKKOS_MEMSPACE_CONCAT(Kokkos,HostSpace)
     #define PF_KOKKOS_MEMPINSPACE PF_KOKKOS_MEMSPACE_CONCAT(Kokkos,HostSpace)
 #endif
